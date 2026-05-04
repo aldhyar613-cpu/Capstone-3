@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🎬 IMDB Movie Debate & Comparison
 
 > AI chatbot untuk debat, perbandingan, dan rekomendasi film dari dataset IMDB Top 1000 — dibangun dengan **LangGraph**, **Qdrant**, dan **MySQL**.
@@ -168,3 +169,6 @@ pytest tests/ -v -m "not integration"
 # Semua test termasuk integration (butuh MySQL + Qdrant + OpenAI)
 pytest tests/ -v
 ```
+=======
+# Capsone-3
+>>>>>>> e18e2c4e924abea3b58f81d687921832cc04c8f3
