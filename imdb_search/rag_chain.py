@@ -21,7 +21,20 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.documents import Document
 
-#from langfuse.callback import CallbackHandler
+def get_langfuse_handler():
+    if not LANGFUSE_PUBLIC_KEY or not LANGFUSE_SECRET_KEY:
+        return None
+    try:
+        from langfuse.callback import CallbackHandler  # import di sini
+        handler = CallbackHandler(
+            public_key=LANGFUSE_PUBLIC_KEY,
+            secret_key=LANGFUSE_SECRET_KEY,
+            host=LANGFUSE_HOST,
+        )
+        return handler
+    except Exception as e:
+        print(f"[langfuse] ⚠ Gagal inisialisasi: {e}")
+        return None
 
 from imdb_search.config import (
     OPENAI_API_KEY,
