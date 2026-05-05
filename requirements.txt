@@ -3,7 +3,7 @@ openai
 langchain
 langchain-openai
 langgraph
-langfuse
+langfuse>=2.0.0
 qdrant-client
 mysql-connector-python
 python-dotenv
