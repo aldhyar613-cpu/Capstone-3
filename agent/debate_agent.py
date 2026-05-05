@@ -14,16 +14,18 @@
 
 from langchain_core.messages import HumanMessage
 
-from langfuse.callback import CallbackHandler          # ← tambah baris 18
-from imdb_search.config import (                       # ← tambah baris 19-23
+try:
+    from langfuse.callback import CallbackHandler
+    LANGFUSE_AVAILABLE = True
+except Exception:
+    CallbackHandler = None
+    LANGFUSE_AVAILABLE = False
+
+from imdb_search.config import (
     LANGFUSE_PUBLIC_KEY,
     LANGFUSE_SECRET_KEY,
     LANGFUSE_HOST,
 )
-
-from agent.graph import build_graph
-from agent.state import DebateState
-from database.session_repo import create_session, save_message
 
 from agent.graph import build_graph
 from agent.state import DebateState
@@ -37,8 +39,8 @@ from database.session_repo import create_session, save_message
 __all__ = ["build_graph", "run_agent"]
 
 
-def _get_langfuse_handler():          
-    if not LANGFUSE_PUBLIC_KEY or not LANGFUSE_SECRET_KEY:
+def _get_langfuse_handler():
+    if not LANGFUSE_AVAILABLE or not LANGFUSE_PUBLIC_KEY or not LANGFUSE_SECRET_KEY:
         return None
     try:
         return CallbackHandler(
@@ -85,19 +87,17 @@ def run_agent(
     if thread_id is None:
         thread_id = f"session-{session_id}" if session_id else "session-new"
 
-    
-
     # Step 2 — Simpan pesan user ke MySQL (untuk sidebar & statistik)
     if session_id:
         save_message(session_id, "user", query)
 
-   # Step 3 — Invoke graph
+    # Step 3 — Invoke graph
     langfuse_handler = _get_langfuse_handler()
     config = {
-    "configurable": {"thread_id": thread_id},
-    "callbacks": [langfuse_handler] if langfuse_handler else [],
+        "configurable": {"thread_id": thread_id},
+        "callbacks": [langfuse_handler] if langfuse_handler else [],
     }
-    
+
     print(f"[debate_agent] Invoke graph | thread={thread_id} | query='{query[:60]}'")
     try:
         initial_state: DebateState = {
