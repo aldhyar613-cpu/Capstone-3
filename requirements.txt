@@ -1,9 +1,6 @@
 ﻿streamlit
 openai
 langchain
-git add requirements.txt
-git commit -m "fix: clean requirements.txt"
-git pushlangchain-core
 langchain-openai
 langgraph
 langfuse
