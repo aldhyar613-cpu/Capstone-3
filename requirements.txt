@@ -1,7 +1,9 @@
 ﻿streamlit
 openai
 langchain
+langchain-core
 langchain-openai
+langchain-community
 langgraph
 langfuse==2.60.10
 qdrant-client
