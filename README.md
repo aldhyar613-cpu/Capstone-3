@@ -81,7 +81,7 @@ Streamlit UI (app.py)
 
 ```bash
 cd imdb-debate
-pip install -r requirements.txt --upgrade
+pip install -r requirements.txt 
 ```
 
 ### 2. Konfigurasi environment

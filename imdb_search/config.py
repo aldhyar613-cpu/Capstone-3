@@ -4,19 +4,30 @@
 #
 # =============================================================
 
+import os
 from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 ROOT_DIR = Path(__file__).parent.parent
+
+# Inject st.secrets ke os.environ jika di Streamlit Cloud
+try:
+    import streamlit as st
+    for key, value in st.secrets.items():
+        if isinstance(value, str):
+            os.environ.setdefault(key, value)
+        else:
+            os.environ.setdefault(key, str(value))
+except Exception:
+    pass
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file        = ".env",
+        env_file          = ".env",
         env_file_encoding = "utf-8",
-        extra           = "ignore",
+        extra             = "ignore",
     )
 
     # OpenAI
