@@ -1,15 +1,15 @@
-# =============================================================
+﻿# =============================================================
 # agent/graph.py
 # Definisi LangGraph StateGraph untuk IMDB Movie Debate.
 #
 # Alur graph:
-#   route_mode → call_tools → generate → END
+#   route_mode â†’ call_tools â†’ generate â†’ END
 #
 # Setiap node adalah fungsi Python biasa yang menerima
 # DebateState dan mengembalikan dict untuk update state.
 #
 # Checkpointer (SqliteSaver) otomatis menyimpan state tiap
-# langkah — history sesi tidak perlu dikelola manual.
+# langkah â€” history sesi tidak perlu dikelola manual.
 # =============================================================
 
 from langchain_openai import ChatOpenAI
@@ -26,7 +26,7 @@ from agent.mode_router import detect_mode_and_films
 
 
 # ------------------------------------------------------------------
-# LLM — dibuat sekali, dipakai semua node yang butuh LLM
+# LLM â€” dibuat sekali, dipakai semua node yang butuh LLM
 # ------------------------------------------------------------------
 
 _llm = ChatOpenAI(
@@ -40,7 +40,7 @@ _llm_with_tools = _llm.bind_tools(ALL_TOOLS)
 
 
 # ------------------------------------------------------------------
-# Helper — pilih system prompt berdasarkan mode
+# Helper â€” pilih system prompt berdasarkan mode
 # ------------------------------------------------------------------
 
 def _get_system_prompt(mode: str, film_a: str | None, film_b: str | None) -> str:
@@ -122,8 +122,8 @@ def generate(state: DebateState) -> dict:
 
 # ------------------------------------------------------------------
 # Edge condition: apakah LLM minta tool call lagi?
-# Jika ya → kembali ke tool_node
-# Jika tidak → selesai (END)
+# Jika ya â†’ kembali ke tool_node
+# Jika tidak â†’ selesai (END)
 # ------------------------------------------------------------------
 
 def should_continue(state: DebateState) -> str:
@@ -166,7 +166,7 @@ def build_graph(db_path: str = "debate_history.db"):
     )
     graph.add_edge("call_tools", "generate")
 
-    # Checkpointer — state otomatis persist ke SQLite
+    # Checkpointer â€” state otomatis persist ke SQLite
    
     checkpointer = MemorySaver()
     compiled = graph.compile(checkpointer=checkpointer)
