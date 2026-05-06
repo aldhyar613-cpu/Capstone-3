@@ -1,15 +1,5 @@
 ﻿# =============================================================
 # agent/graph.py
-# Definisi LangGraph StateGraph untuk IMDB Movie Debate.
-#
-# Alur graph:
-#   route_mode â†’ call_tools â†’ generate â†’ END
-#
-# Setiap node adalah fungsi Python biasa yang menerima
-# DebateState dan mengembalikan dict untuk update state.
-#
-# Checkpointer (SqliteSaver) otomatis menyimpan state tiap
-# langkah â€” history sesi tidak perlu dikelola manual.
 # =============================================================
 
 from langchain_openai import ChatOpenAI
@@ -17,30 +7,14 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
-from imdb_search.config import OPENAI_API_KEY, LLM_MODEL
 from agent.state import DebateState
 from agent.tools import ALL_TOOLS
 from agent.prompts import DEBATE_SYSTEM, COMPARE_SYSTEM, RECOMMEND_SYSTEM
 from agent.mode_router import detect_mode_and_films
 
 
-
 # ------------------------------------------------------------------
-# LLM â€” dibuat sekali, dipakai semua node yang butuh LLM
-# ------------------------------------------------------------------
-
-_llm = ChatOpenAI(
-    model       = LLM_MODEL,
-    api_key     = OPENAI_API_KEY,
-    temperature = 0.4,
-    streaming   = True,
-)
-
-_llm_with_tools = _llm.bind_tools(ALL_TOOLS)
-
-
-# ------------------------------------------------------------------
-# Helper â€” pilih system prompt berdasarkan mode
+# Helper — pilih system prompt berdasarkan mode
 # ------------------------------------------------------------------
 
 def _get_system_prompt(mode: str, film_a: str | None, film_b: str | None) -> str:
@@ -55,20 +29,12 @@ def _get_system_prompt(mode: str, film_a: str | None, film_b: str | None) -> str
 
 # ------------------------------------------------------------------
 # NODE 1: route_mode
-# Deteksi mode & film dari pesan user terakhir.
-# Hanya jalan di pesan pertama sesi (mode masih kosong).
 # ------------------------------------------------------------------
 
 def route_mode(state: DebateState) -> dict:
-    """
-    Deteksi mode (DEBATE/COMPARE/RECOMMEND) dan nama film
-    dari query user. Hasil disimpan ke state.
-    """
-    # Jika mode sudah ada (sesi lanjutan), skip deteksi
     if state.get("mode"):
         return {}
 
-    # Ambil pesan user terakhir
     last_human = next(
         (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
         None,
@@ -87,43 +53,7 @@ def route_mode(state: DebateState) -> dict:
 
 
 # ------------------------------------------------------------------
-# NODE 2: call_tools (via ToolNode dari LangGraph prebuilt)
-# LangGraph ToolNode otomatis memanggil tool yang diminta LLM
-# dan menambahkan ToolMessage ke state["messages"].
-# ------------------------------------------------------------------
-
-tool_node = ToolNode(ALL_TOOLS)
-
-
-# ------------------------------------------------------------------
-# NODE 3: generate
-# LLM menghasilkan jawaban akhir berdasarkan konteks tools
-# dan system prompt sesuai mode.
-# ------------------------------------------------------------------
-
-def generate(state: DebateState) -> dict:
-    """
-    Panggil LLM dengan system prompt sesuai mode dan
-    semua pesan (termasuk hasil tool) sebagai konteks.
-    """
-    system_prompt = _get_system_prompt(
-        mode   = state.get("mode", "RECOMMEND"),
-        film_a = state.get("film_a"),
-        film_b = state.get("film_b"),
-    )
-
-    messages = [SystemMessage(content=system_prompt)] + state["messages"]
-
-    print(f"[graph:generate] Calling LLM | mode={state.get('mode')} | messages={len(messages)}")
-    response = _llm_with_tools.invoke(messages)
-
-    return {"messages": [response]}
-
-
-# ------------------------------------------------------------------
-# Edge condition: apakah LLM minta tool call lagi?
-# Jika ya â†’ kembali ke tool_node
-# Jika tidak â†’ selesai (END)
+# Edge condition
 # ------------------------------------------------------------------
 
 def should_continue(state: DebateState) -> str:
@@ -134,30 +64,41 @@ def should_continue(state: DebateState) -> str:
 
 
 # ------------------------------------------------------------------
-# Build & compile graph
+# Build & compile graph — LLM dibuat di sini agar baca key terbaru
 # ------------------------------------------------------------------
 
 def build_graph(db_path: str = "debate_history.db"):
-    """
-    Membangun dan mengompilasi LangGraph StateGraph.
+    from imdb_search.config import OPENAI_API_KEY, LLM_MODEL
 
-    Parameter:
-        db_path: path file SQLite untuk checkpointer
-                 (default: debate_history.db di working directory)
+    # LLM dibuat di dalam fungsi agar OPENAI_API_KEY sudah terisi
+    llm = ChatOpenAI(
+        model       = LLM_MODEL,
+        api_key     = OPENAI_API_KEY,
+        temperature = 0.4,
+        streaming   = True,
+    )
+    llm_with_tools = llm.bind_tools(ALL_TOOLS)
+    tool_node = ToolNode(ALL_TOOLS)
 
-    Return: compiled graph siap dipanggil dengan .invoke() atau .stream()
-    """
+    # NODE 2: generate — pakai llm_with_tools dari closure
+    def generate(state: DebateState) -> dict:
+        system_prompt = _get_system_prompt(
+            mode   = state.get("mode", "RECOMMEND"),
+            film_a = state.get("film_a"),
+            film_b = state.get("film_b"),
+        )
+        messages = [SystemMessage(content=system_prompt)] + state["messages"]
+        print(f"[graph:generate] Calling LLM | mode={state.get('mode')} | messages={len(messages)}")
+        response = llm_with_tools.invoke(messages)
+        return {"messages": [response]}
+
     graph = StateGraph(DebateState)
 
-    # Daftarkan semua node
-    graph.add_node("route_mode",  route_mode)
-    graph.add_node("call_tools",  tool_node)
-    graph.add_node("generate",    generate)
+    graph.add_node("route_mode", route_mode)
+    graph.add_node("call_tools", tool_node)
+    graph.add_node("generate",   generate)
 
-    # Entry point
     graph.set_entry_point("route_mode")
-
-    # Edges
     graph.add_edge("route_mode", "generate")
     graph.add_conditional_edges(
         "generate",
@@ -166,8 +107,6 @@ def build_graph(db_path: str = "debate_history.db"):
     )
     graph.add_edge("call_tools", "generate")
 
-    # Checkpointer â€” state otomatis persist ke SQLite
-   
     checkpointer = MemorySaver()
     compiled = graph.compile(checkpointer=checkpointer)
     print(f"[graph] Graph compiled | checkpointer={db_path}")
