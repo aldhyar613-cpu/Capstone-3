@@ -1,4 +1,4 @@
-# =============================================================
+ # =============================================================
 # imdb_search/config.py
 # Konfigurasi project menggunakan Pydantic BaseSettings.
 #
@@ -31,11 +31,11 @@ class Settings(BaseSettings):
     )
 
     # OpenAI
-    openai_api_key: str = Field(..., alias="OPENAI_API_KEY")
+    openai_api_key: str = Field("", alias="OPENAI_API_KEY")
     llm_model:      str = Field("gpt-4o-mini", alias="LLM_MODEL")
 
     # Qdrant
-    qdrant_mode:    str = Field("local",  alias="QDRANT_MODE")
+    qdrant_mode:    str = Field("Cloud",  alias="QDRANT_MODE")
     qdrant_url:     str = Field("",       alias="QDRANT_URL")
     qdrant_api_key: str = Field("",       alias="QDRANT_API_KEY")
 
