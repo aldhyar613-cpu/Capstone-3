@@ -3,7 +3,6 @@
 # Definisi 6 tools yang dipakai oleh debate_agent.py.
 # Setiap tool adalah fungsi Python biasa yang dibungkus
 # menjadi LangChain Tool menggunakan @tool decorator.
-#
 # Tools:
 #   1. search_movies_tool       — semantic search via Qdrant
 #   2. get_movie_details_tool   — data lengkap film dari MySQL
@@ -44,6 +43,8 @@ def _get_qdrant_client() -> QdrantClient:
 
 # ------------------------------------------------------------------
 # TOOL 1: Semantic Search via Qdrant
+# PERBAIKAN: format output lebih terstruktur agar LLM bisa render
+# dengan Rating, Sutradara, Deskripsi per film
 # ------------------------------------------------------------------
 
 @tool
@@ -67,12 +68,13 @@ def search_movies_tool(query: str) -> str:
         lines = []
         for i, r in enumerate(results, 1):
             lines.append(
-                f"{i}. {r['title']} ({r['year']}) | "
-                f"Rating: {r['imdb_rating']}/10 | "
-                f"Genre: {r['genre']} | "
-                f"Sutradara: {r['director']}"
+                f"{i}. **{r['title']}** ({r['year']})\n"
+                f"   - Rating: {r['imdb_rating']}/10\n"
+                f"   - Sutradara: {r['director']}\n"
+                f"   - Genre: {r['genre']}\n"
+                f"   - Deskripsi: {r['overview'][:200]}"
             )
-        return "\n".join(lines)
+        return "\n\n".join(lines)
 
     except Exception as e:
         return f"Error saat search: {e}"
@@ -125,6 +127,8 @@ def get_movie_details_tool(title: str) -> str:
 
 # ------------------------------------------------------------------
 # TOOL 3: Compare Stats (head-to-head MySQL)
+# PERBAIKAN: output markdown tabel agar LLM bisa render tabel
+# perbandingan yang rapi di Streamlit
 # ------------------------------------------------------------------
 
 @tool
@@ -151,22 +155,31 @@ def compare_stats_tool(titles: str) -> str:
         b = result["film_b"]
         w = result["winners"]
 
-        def fmt(val, prefix="", suffix=""):
-            return f"{prefix}{val:,}{suffix}" if isinstance(val, (int, float)) and val else "N/A"
+        def fmt_gross(val):
+            return f"${val:,}" if isinstance(val, (int, float)) and val else "N/A"
 
-        output = (
-            f"{'='*50}\n"
-            f"HEAD-TO-HEAD: {a['title']} vs {b['title']}\n"
-            f"{'='*50}\n"
-            f"{'Kategori':<20} {a['title'][:18]:<20} {b['title'][:18]:<20} Pemenang\n"
-            f"{'-'*80}\n"
-            f"{'IMDB Rating':<20} {str(a.get('imdb_rating','N/A')):<20} {str(b.get('imdb_rating','N/A')):<20} {w.get('rating_tertinggi','N/A')}\n"
-            f"{'Metascore':<20} {str(a.get('meta_score','N/A')):<20} {str(b.get('meta_score','N/A')):<20} {w.get('metascore_tertinggi','N/A')}\n"
-            f"{'Box Office':<20} {fmt(a.get('gross_usd'),'$'):<20} {fmt(b.get('gross_usd'),'$'):<20} {w.get('gross_terbesar','N/A')}\n"
-            f"{'Jumlah Vote':<20} {fmt(a.get('no_of_votes')):<20} {fmt(b.get('no_of_votes')):<20} {w.get('vote_terbanyak','N/A')}\n"
-            f"{'Runtime':<20} {str(a.get('runtime_min','N/A'))+' min':<20} {str(b.get('runtime_min','N/A'))+' min':<20} -\n"
-            f"{'Tahun':<20} {str(a.get('year','N/A')):<20} {str(b.get('year','N/A')):<20} -\n"
-        )
+        def fmt_num(val):
+            return f"{val:,}" if isinstance(val, (int, float)) and val else "N/A"
+
+        # Output sebagai markdown tabel agar LLM bisa render langsung
+        output = f"""DATA PERBANDINGAN: {a['title']} vs {b['title']}
+
+| Kategori | {a['title']} | {b['title']} | Pemenang |
+|----------|------------|------------|----------|
+| Rating IMDB | {a.get('imdb_rating', 'N/A')}/10 | {b.get('imdb_rating', 'N/A')}/10 | {w.get('rating_tertinggi', 'N/A')} |
+| Metascore | {a.get('meta_score', 'N/A')} | {b.get('meta_score', 'N/A')} | {w.get('metascore_tertinggi', 'N/A')} |
+| Gross Box Office | {fmt_gross(a.get('gross_usd'))} | {fmt_gross(b.get('gross_usd'))} | {w.get('gross_terbesar', 'N/A')} |
+| Jumlah Vote | {fmt_num(a.get('no_of_votes'))} | {fmt_num(b.get('no_of_votes'))} | {w.get('vote_terbanyak', 'N/A')} |
+| Runtime | {a.get('runtime_min', 'N/A')} menit | {b.get('runtime_min', 'N/A')} menit | - |
+| Genre | {a.get('genre', 'N/A')} | {b.get('genre', 'N/A')} | - |
+| Tahun | {a.get('year', 'N/A')} | {b.get('year', 'N/A')} | - |
+
+Film A - Sutradara: {a.get('director', 'N/A')}
+Film A - Sinopsis: {a.get('overview', 'N/A')}
+
+Film B - Sutradara: {b.get('director', 'N/A')}
+Film B - Sinopsis: {b.get('overview', 'N/A')}
+"""
         return output
 
     except Exception as e:
@@ -175,6 +188,8 @@ def compare_stats_tool(titles: str) -> str:
 
 # ------------------------------------------------------------------
 # TOOL 4: Filter Movies dari MySQL
+# PERBAIKAN: format output lebih terstruktur agar RECOMMEND
+# outputnya rapi dengan Rating, Sutradara, Deskripsi per film
 # ------------------------------------------------------------------
 
 @tool
@@ -202,11 +217,11 @@ def filter_movies_tool(criteria: str) -> str:
 
         results = filter_movies(
             genre         = params.get("genre"),
-            min_rating    = float(params["min_rating"]) if "min_rating" in params else None,
-            max_rating    = float(params["max_rating"]) if "max_rating" in params else None,
-            min_year      = int(params["min_year"])     if "min_year"   in params else None,
-            max_year      = int(params["max_year"])     if "max_year"   in params else None,
-            min_metascore = int(params["min_metascore"]) if "min_metascore" in params else None,
+            min_rating    = float(params["min_rating"])    if "min_rating"    in params else None,
+            max_rating    = float(params["max_rating"])    if "max_rating"    in params else None,
+            min_year      = int(params["min_year"])        if "min_year"      in params else None,
+            max_year      = int(params["max_year"])        if "max_year"      in params else None,
+            min_metascore = int(params["min_metascore"])   if "min_metascore" in params else None,
             director      = params.get("director"),
             limit         = int(params.get("limit", 8)),
         )
@@ -218,11 +233,13 @@ def filter_movies_tool(criteria: str) -> str:
         for i, m in enumerate(results, 1):
             gross = f" | Gross: ${m['gross_usd']:,}" if m.get("gross_usd") else ""
             lines.append(
-                f"{i}. {m['title']} ({m.get('year','?')}) | "
-                f"Rating: {m.get('imdb_rating','?')}/10 | "
-                f"Genre: {m.get('genre','?')}{gross}"
+                f"{i}. **{m['title']}** ({m.get('year','?')})\n"
+                f"   - Rating: {m.get('imdb_rating','?')}/10\n"
+                f"   - Sutradara: {m.get('director','?')}\n"
+                f"   - Genre: {m.get('genre','?')}{gross}\n"
+                f"   - Deskripsi: {m.get('overview','')[:200]}"
             )
-        return "\n".join(lines)
+        return "\n\n".join(lines)
 
     except Exception as e:
         return f"Error saat filter: {e}"

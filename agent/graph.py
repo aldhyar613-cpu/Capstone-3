@@ -3,13 +3,13 @@
 # Definisi LangGraph StateGraph untuk IMDB Movie Debate.
 #
 # Alur graph:
-#   route_mode â†’ call_tools â†’ generate â†’ END
+#   route_mode → call_tools → generate → END
 #
 # Setiap node adalah fungsi Python biasa yang menerima
 # DebateState dan mengembalikan dict untuk update state.
 #
 # Checkpointer (SqliteSaver) otomatis menyimpan state tiap
-# langkah â€” history sesi tidak perlu dikelola manual.
+# langkah — history sesi tidak perlu dikelola manual.
 # =============================================================
 
 from langchain_openai import ChatOpenAI
@@ -26,7 +26,7 @@ from agent.mode_router import detect_mode_and_films
 
 
 # ------------------------------------------------------------------
-# LLM â€” dibuat sekali, dipakai semua node yang butuh LLM
+# LLM — dibuat sekali, dipakai semua node yang butuh LLM
 # ------------------------------------------------------------------
 
 _llm = ChatOpenAI(
@@ -40,7 +40,7 @@ _llm_with_tools = _llm.bind_tools(ALL_TOOLS)
 
 
 # ------------------------------------------------------------------
-# Helper â€” pilih system prompt berdasarkan mode
+# Helper — pilih system prompt berdasarkan mode
 # ------------------------------------------------------------------
 
 def _get_system_prompt(mode: str, film_a: str | None, film_b: str | None) -> str:
@@ -55,17 +55,23 @@ def _get_system_prompt(mode: str, film_a: str | None, film_b: str | None) -> str
 
 # ------------------------------------------------------------------
 # NODE 1: route_mode
-# Deteksi mode & film dari pesan user terakhir.
-# Hanya jalan di pesan pertama sesi (mode masih kosong).
+# PERBAIKAN: deteksi hanya di pesan pertama sesi (bukan skip total),
+# sesi lanjutan tetap pakai mode yang sudah ada.
 # ------------------------------------------------------------------
 
 def route_mode(state: DebateState) -> dict:
     """
     Deteksi mode (DEBATE/COMPARE/RECOMMEND) dan nama film
     dari query user. Hasil disimpan ke state.
+
+    - Pesan pertama dalam sesi → selalu deteksi mode baru
+    - Pesan lanjutan dalam sesi yang sama → pertahankan mode
     """
-    # Jika mode sudah ada (sesi lanjutan), skip deteksi
-    if state.get("mode"):
+    # Hitung jumlah HumanMessage di state
+    human_msgs = [m for m in state["messages"] if isinstance(m, HumanMessage)]
+
+    # Jika sesi lanjutan (sudah ada >1 HumanMessage) dan mode sudah ada → skip
+    if len(human_msgs) > 1 and state.get("mode"):
         return {}
 
     # Ambil pesan user terakhir
@@ -122,8 +128,8 @@ def generate(state: DebateState) -> dict:
 
 # ------------------------------------------------------------------
 # Edge condition: apakah LLM minta tool call lagi?
-# Jika ya â†’ kembali ke tool_node
-# Jika tidak â†’ selesai (END)
+# Jika ya → kembali ke tool_node
+# Jika tidak → selesai (END)
 # ------------------------------------------------------------------
 
 def should_continue(state: DebateState) -> str:
@@ -166,8 +172,7 @@ def build_graph(db_path: str = "debate_history.db"):
     )
     graph.add_edge("call_tools", "generate")
 
-    # Checkpointer â€” state otomatis persist ke SQLite
-   
+    # Checkpointer — state otomatis persist ke SQLite
     checkpointer = MemorySaver()
     compiled = graph.compile(checkpointer=checkpointer)
     print(f"[graph] Graph compiled | checkpointer={db_path}")
